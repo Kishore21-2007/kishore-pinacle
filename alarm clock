@@ -1,0 +1,80 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import time
+import threading
+import pygame  # or use playsound
+
+class AlarmApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Alarm Clock")
+        self.alarm_time = None
+        self.snooze_minutes = 5
+        self.alarm_sound = None
+        self.alarm_playing = False
+
+        # init audio
+        pygame.mixer.init()
+
+        # Time label
+        self.time_label = tk.Label(root, font=("Helvetica", 48))
+        self.time_label.pack(pady=20)
+
+        # Buttons
+        btn_frame = tk.Frame(root)
+        tk.Button(btn_frame, text="Set Alarm", command=self.set_alarm).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Stop", command=self.stop_alarm).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Snooze", command=self.snooze_alarm).pack(side="left", padx=5)
+        btn_frame.pack()
+
+        threading.Thread(target=self.update_clock, daemon=True).start()
+
+    def update_clock(self):
+        while True:
+            now = time.strftime("%H:%M:%S")
+            self.time_label.config(text=now)
+            if self.alarm_time == now and not self.alarm_playing:
+                self.trigger_alarm()
+            time.sleep(1)
+
+    def set_alarm(self):
+        t = tk.simpledialog.askstring("Alarm Time", "Enter time (HH:MM:SS):")
+        if not t:
+            return
+        self.alarm_time = t
+        f = filedialog.askopenfilename(title="Choose alarm tone",
+                                       filetypes=[("Audio files", "*.mp3 *.wav")])
+        self.alarm_sound = f
+        snooze = tk.simpledialog.askinteger("Snooze", "Snooze minutes?", initialvalue=5)
+        if snooze is not None:
+            self.snooze_minutes = snooze
+        messagebox.showinfo("Alarm Set", f"Alarm set for {self.alarm_time}")
+
+    def trigger_alarm(self):
+        if not self.alarm_sound:
+            messagebox.showwarning("No Sound", "No alarm tone selected.")
+            return
+        self.alarm_playing = True
+        pygame.mixer.music.load(self.alarm_sound)
+        pygame.mixer.music.play(-1)
+        messagebox.showinfo("Alarm", "Time's up!")
+
+    def stop_alarm(self):
+        if self.alarm_playing:
+            pygame.mixer.music.stop()
+            self.alarm_playing = False
+
+    def snooze_alarm(self):
+        if self.alarm_playing and self.alarm_time:
+            pygame.mixer.music.stop()
+            self.alarm_playing = False
+            # add snooze
+            h, m, s = map(int, self.alarm_time.split(":"))
+            t = time.time() + self.snooze_minutes * 60
+            self.alarm_time = time.strftime("%H:%M:%S", time.localtime(t))
+            messagebox.showinfo("Snooze", f"Alarm snoozed to {self.alarm_time}")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = AlarmApp(root)
+    root.mainloop()
