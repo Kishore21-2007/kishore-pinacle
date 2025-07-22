@@ -1,0 +1,91 @@
+# calendar_app.py
+import tkinter as tk
+from tkcalendar import Calendar
+import sqlite3
+from datetime import datetime, timedelta
+import threading
+try:
+    from plyer import notification
+except ImportError:
+    notification = None
+
+DB = 'reminders.db'
+
+def init_db():
+    conn = sqlite3.connect(DB)
+    conn.execute('''
+    CREATE TABLE IF NOT EXISTS reminders(
+        id INTEGER PRIMARY KEY,
+        date TEXT,
+        message TEXT
+    )''')
+    conn.commit()
+    conn.close()
+
+def add_reminder(date_str, msg):
+    conn = sqlite3.connect(DB)
+    conn.execute('INSERT INTO reminders(date, message) VALUES (?, ?)', (date_str, msg))
+    conn.commit()
+    conn.close()
+    refresh_calendar()
+
+def get_reminders(date_str):
+    conn = sqlite3.connect(DB)
+    rows = conn.execute('SELECT message FROM reminders WHERE date = ?', (date_str,)).fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+def on_date_selected(event):
+    sel = cal.get_date()  # format YYYY-MM-DD
+    msgs = get_reminders(sel)
+    popup = tk.Toplevel(root)
+    popup.title(sel)
+    for m in msgs:
+        tk.Label(popup, text=m).pack()
+    tk.Entry(popup).pack()
+    msg_e = popup.children[list(popup.children)[-1]]
+    def save():
+        add_reminder(sel, msg_e.get())
+        popup.destroy()
+    tk.Button(popup, text="Add", command=save).pack()
+
+def refresh_calendar():
+    for ev in cal.get_calevents():
+        cal.calevent_remove(ev)
+    conn = sqlite3.connect(DB)
+    for date_str, _ in conn.execute('SELECT DISTINCT date, message FROM reminders'):
+        dt = datetime.fromisoformat(date_str).date()
+        cal.calevent_create(dt, '🔔', 'rem')
+    cal.tag_config('rem', background='lightblue')
+    conn.close()
+
+def schedule_notifications():
+    now = datetime.now()
+    conn = sqlite3.connect(DB)
+    for date_str, msg in conn.execute('SELECT date, message FROM reminders'):
+        dt = datetime.fromisoformat(date_str) + timedelta(hours=9)  # e.g., 9 AM
+        delta = (dt - now).total_seconds()
+        if delta > 0:
+            threading.Timer(delta, notify, args=(msg,)).start()
+    conn.close()
+
+def notify(msg):
+    if notification:
+        notification.notify(title="Reminder", message=msg)
+    else:
+        print("[!] Reminder:", msg)
+
+if __name__ == "__main__":
+    init_db()
+    root = tk.Tk()
+    root.title("Calendar Reminders")
+
+    cal = Calendar(root, selectmode='day', date_pattern='yyyy-MM-dd')
+    cal.pack(pady=10)
+    cal.bind("<<CalendarSelected>>", on_date_selected)
+
+    refresh_calendar()
+
+    threading.Thread(target=schedule_notifications, daemon=True).start()
+
+    root.mainloop()
